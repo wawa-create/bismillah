@@ -1,0 +1,631 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DLU E-Ticket | Pemeriksaan Transfer</title>
+
+  <!-- Library OCR untuk membaca teks dari gambar -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f6fa;
+      color: #263449;
+    }
+
+    header {
+      background: #16324f;
+      color: white;
+      padding: 20px;
+    }
+
+    header h2 { margin: 0; }
+    header p { margin-bottom: 0; color: #d6e2f0; }
+
+    nav {
+      display: flex;
+      gap: 10px;
+      padding: 15px;
+      background: white;
+      overflow-x: auto;
+    }
+
+    nav button {
+      border: 0;
+      padding: 10px 14px;
+      border-radius: 7px;
+      background: #e8eef7;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    nav button.active {
+      background: #2457a7;
+      color: white;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 25px auto;
+      padding: 0 16px;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin: 20px 0;
+    }
+
+    .card, .panel {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #e0e7ef;
+      margin-bottom: 16px;
+    }
+
+    .card span { color: #64748b; font-size: 13px; }
+    .card h2 { margin-bottom: 0; color: #2457a7; }
+
+    .upload {
+      border: 2px dashed #9bb2d0;
+      background: #f8fbff;
+      padding: 25px;
+      text-align: center;
+      border-radius: 10px;
+      margin: 15px 0;
+    }
+
+    input[type="file"] {
+      display: block;
+      max-width: 100%;
+      margin: 15px auto;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 7px;
+      padding: 11px 16px;
+      background: #2457a7;
+      color: white;
+      cursor: pointer;
+      margin: 4px 3px 4px 0;
+    }
+
+    .btn:disabled { opacity: .5; }
+
+    .muted { color: #64748b; font-size: 13px; }
+
+    .result {
+      padding: 14px;
+      border: 1px solid #e0e7ef;
+      border-radius: 9px;
+      margin-top: 12px;
+      background: white;
+      overflow-wrap: anywhere;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .new { background: #e2f6e9; color: #167044; }
+    .duplicate { background: #fee8e7; color: #b42318; }
+    .review { background: #fff1ce; color: #8a5b00; }
+
+    .fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .fields label {
+      display: block;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .fields input {
+      width: 100%;
+      padding: 9px;
+      border: 1px solid #ccd5e1;
+      border-radius: 6px;
+      margin-top: 4px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #e0e7ef;
+      text-align: left;
+    }
+
+    th { background: #f5f8fc; }
+
+    .notice {
+      padding: 12px;
+      background: #fff6df;
+      border-radius: 8px;
+      color: #785300;
+      font-size: 12px;
+    }
+
+    @media (max-width: 650px) {
+      .cards { grid-template-columns: 1fr; }
+      .fields { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <h2>DLU E-Ticket</h2>
+  <p>Prototype Pemeriksaan Bukti Transfer</p>
+</header>
+
+<nav>
+  <button class="active" onclick="showPage('dashboard', this)">
+    Dashboard
+  </button>
+  <button onclick="showPage('pemeriksaan', this)">
+    Pemeriksaan Bukti
+  </button>
+  <button onclick="showPage('riwayat', this)">
+    Riwayat Pemeriksaan
+  </button>
+</nav>
+
+<main>
+  <!-- DASHBOARD -->
+  <section id="dashboard" class="page active">
+    <h1>Dashboard</h1>
+    <p class="muted">
+      Ringkasan pemeriksaan bukti transfer.
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <span>Total bukti tersimpan</span>
+        <h2 id="total">0</h2>
+      </div>
+      <div class="card">
+        <span>Terindikasi duplikat</span>
+        <h2 id="duplikat">0</h2>
+      </div>
+      <div class="card">
+        <span>Perlu diperiksa</span>
+        <h2 id="periksa">0</h2>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Pemeriksaan Bukti Transfer</h3>
+      <p class="muted">
+        Unggah bukti transfer untuk membaca informasi transaksi
+        dan membandingkannya dengan riwayat yang tersimpan.
+      </p>
+      <button class="btn" onclick="showPage('pemeriksaan')">
+        Mulai Pemeriksaan
+      </button>
+    </div>
+
+    <div class="notice">
+      Prototype ini menyimpan riwayat di browser yang digunakan.
+      Data belum tersinkronisasi dengan pengguna lain atau sistem internal perusahaan.
+    </div>
+  </section>
+
+  <!-- PEMERIKSAAN -->
+  <section id="pemeriksaan" class="page">
+    <h1>Pemeriksaan Bukti Transfer</h1>
+    <p class="muted">
+      Pilih beberapa gambar sekaligus untuk diperiksa.
+    </p>
+
+    <div class="panel">
+      <h3>1. Unggah gambar</h3>
+      <div class="upload">
+        <p><strong>Pilih bukti transfer</strong></p>
+        <p class="muted">Format JPG, JPEG, atau PNG</p>
+        <input
+          type="file"
+          id="files"
+          accept="image/jpeg,image/png"
+          multiple
+        >
+        <p id="jumlahFile" class="muted">
+          Belum ada gambar dipilih.
+        </p>
+      </div>
+
+      <button class="btn" id="proses" onclick="prosesGambar()">
+        Baca dan Periksa Gambar
+      </button>
+      <p id="progress" class="muted"></p>
+    </div>
+
+    <div class="panel">
+      <h3>2. Hasil pemeriksaan</h3>
+      <p class="muted">
+        Periksa kembali hasil OCR. Koreksi informasi yang salah
+        sebelum menyimpan hasil ke riwayat.
+      </p>
+
+      <div id="hasil">
+        Belum ada hasil pemeriksaan.
+      </div>
+
+      <button
+        class="btn"
+        id="simpan"
+        onclick="simpanHasil()"
+        disabled
+      >
+        Simpan Hasil ke Riwayat
+      </button>
+    </div>
+  </section>
+
+  <!-- RIWAYAT -->
+  <section id="riwayat" class="page">
+    <h1>Riwayat Pemeriksaan</h1>
+    <p class="muted">
+      Bukti yang tersimpan menjadi pembanding untuk unggahan berikutnya.
+    </p>
+
+    <div class="panel">
+      <button class="btn" onclick="eksporCSV()">
+        Ekspor ke CSV
+      </button>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nama File</th>
+              <th>Tanggal</th>
+              <th>Bank</th>
+              <th>Nominal</th>
+              <th>No. Referensi</th>
+              <th>Waktu</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="tabelRiwayat"></tbody>
+        </table>
+      </div>
+
+      <p id="kosong" class="muted">
+        Belum ada riwayat tersimpan.
+      </p>
+    </div>
+  </section>
+</main>
+
+<script>
+  const KEY = "dlu_prototype_transfer";
+  let hasilSementara = [];
+
+  function bacaRiwayat() {
+    return JSON.parse(localStorage.getItem(KEY) || "[]");
+  }
+
+  function simpanRiwayat(data) {
+    localStorage.setItem(KEY, JSON.stringify(data));
+    perbaruiDashboard();
+  }
+
+  function showPage(id, tombol) {
+    document.querySelectorAll(".page").forEach(p => {
+      p.classList.remove("active");
+    });
+    document.getElementById(id).classList.add("active");
+
+    document.querySelectorAll("nav button").forEach(b => {
+      b.classList.remove("active");
+    });
+    if (tombol) tombol.classList.add("active");
+
+    if (id === "riwayat") tampilkanRiwayat();
+  }
+
+  document.getElementById("files").addEventListener("change", e => {
+    document.getElementById("jumlahFile").textContent =
+      e.target.files.length + " gambar dipilih.";
+  });
+
+  function normalisasi(v) {
+    return String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function ekstrakTeks(teks) {
+    const tanggal =
+      teks.match(/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/)?.[0] || "";
+
+    const waktu =
+      teks.match(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/)?.[0] || "";
+
+    const bankList = [
+      "BCA", "BNI", "BRI", "Mandiri", "BSI",
+      "CIMB Niaga", "Permata", "Danamon", "BTN"
+    ];
+
+    const bank =
+      bankList.find(b => new RegExp(b, "i").test(teks)) || "";
+
+    const refBaris = teks.split(/\r?\n/).find(baris =>
+      /referensi|reference|no\.?\s*ref|transaction\s*id/i.test(baris)
+    ) || "";
+
+    const ref = refBaris.match(/\b[A-Z0-9]{6,}\b/i)?.[0] || "";
+
+    const angka = [...teks.matchAll(
+      /(?:rp\.?\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{4,})/gi
+    )].map(m => m[1].replace(/[.,]/g, ""));
+
+    const nominal = angka
+      .filter(n => Number(n) >= 1000)
+      .sort((a, b) => Number(b) - Number(a))[0] || "";
+
+    return { tanggal, waktu, bank, nominal, ref, teks };
+  }
+
+  function cocok(a, b) {
+    const refA = normalisasi(a.ref);
+    const refB = normalisasi(b.ref);
+
+    // Nomor referensi sama menjadi indikator kuat duplikasi.
+    if (refA && refB && refA === refB) return true;
+
+    // Jika tidak ada nomor referensi, gunakan kombinasi informasi.
+    return Boolean(
+      a.tanggal &&
+      a.nominal &&
+      a.bank &&
+      normalisasi(a.tanggal) === normalisasi(b.tanggal) &&
+      normalisasi(a.nominal) === normalisasi(b.nominal) &&
+      normalisasi(a.bank) === normalisasi(b.bank) &&
+      (
+        !a.waktu ||
+        !b.waktu ||
+        normalisasi(a.waktu) === normalisasi(b.waktu)
+      )
+    );
+  }
+
+  async function prosesGambar() {
+    const files = [...document.getElementById("files").files];
+
+    if (!files.length) {
+      alert("Pilih gambar terlebih dahulu.");
+      return;
+    }
+
+    if (!window.Tesseract) {
+      alert("OCR belum termuat. Periksa koneksi internet lalu muat ulang.");
+      return;
+    }
+
+    const tombol = document.getElementById("proses");
+    tombol.disabled = true;
+    document.getElementById("simpan").disabled = true;
+    document.getElementById("hasil").innerHTML = "";
+    hasilSementara = [];
+
+    const riwayat = bacaRiwayat();
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        document.getElementById("progress").textContent =
+          `Memproses gambar ${i + 1} dari ${files.length}: ${file.name}`;
+
+        const ocr = await Tesseract.recognize(file, "eng");
+        const data = ekstrakTeks(ocr.data.text || "");
+
+        const pembanding = [...riwayat, ...hasilSementara];
+        const duplikat = pembanding.some(item => cocok(data, item));
+
+        const status = duplikat
+          ? "Terindikasi duplikat"
+          : data.tanggal && data.nominal && (data.ref || data.bank)
+            ? "Belum ditemukan"
+            : "Perlu diperiksa";
+
+        hasilSementara.push({
+          nama: file.name,
+          ...data,
+          status
+        });
+
+        tampilkanHasil();
+      }
+
+      document.getElementById("progress").textContent =
+        "Selesai. Periksa hasil pembacaan sebelum menyimpan.";
+      document.getElementById("simpan").disabled = false;
+    } catch (error) {
+      console.error(error);
+      alert("Gambar gagal diproses. Coba lagi dengan gambar yang lebih jelas.");
+    } finally {
+      tombol.disabled = false;
+    }
+  }
+
+  function tampilkanHasil() {
+    const wadah = document.getElementById("hasil");
+
+    wadah.innerHTML = hasilSementara.map((r, i) => `
+      <div class="result">
+        <strong>${aman(r.nama)}</strong>
+        <p><span class="status ${
+          r.status === "Terindikasi duplikat" ? "duplicate" :
+          r.status === "Belum ditemukan" ? "new" : "review"
+        }">${aman(r.status)}</span></p>
+
+        <div class="fields">
+          ${kolom(i, "tanggal", "Tanggal transaksi")}
+          ${kolom(i, "bank", "Bank tujuan")}
+          ${kolom(i, "nominal", "Nominal")}
+          ${kolom(i, "ref", "Nomor referensi")}
+          ${kolom(i, "waktu", "Waktu transfer")}
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function kolom(i, kunci, label) {
+    return `
+      <div>
+        <label>${label}</label>
+        <input
+          value="${aman(hasilSementara[i][kunci])}"
+          onchange="ubahData(${i}, '${kunci}', this.value)"
+        >
+      </div>
+    `;
+  }
+
+  function ubahData(i, kunci, nilai) {
+    hasilSementara[i][kunci] = nilai;
+
+    const sebelumnya = [
+      ...bacaRiwayat(),
+      ...hasilSementara.slice(0, i)
+    ];
+
+    const duplikat = sebelumnya.some(item =>
+      cocok(hasilSementara[i], item)
+    );
+
+    const r = hasilSementara[i];
+    r.status = duplikat
+      ? "Terindikasi duplikat"
+      : r.tanggal && r.nominal && (r.ref || r.bank)
+        ? "Belum ditemukan"
+        : "Perlu diperiksa";
+
+    tampilkanHasil();
+  }
+
+  function simpanHasil() {
+    const riwayat = bacaRiwayat();
+
+    // Bandingkan ulang dengan data historis dan gambar sebelumnya.
+    hasilSementara.forEach((r, i) => {
+      const sebelumnya = [...riwayat, ...hasilSementara.slice(0, i)];
+      const duplikat = sebelumnya.some(item => cocok(r, item));
+
+      r.status = duplikat
+        ? "Terindikasi duplikat"
+        : r.tanggal && r.nominal && (r.ref || r.bank)
+          ? "Belum ditemukan"
+          : "Perlu diperiksa";
+
+      riwayat.push({ ...r, disimpan: new Date().toISOString() });
+    });
+
+    simpanRiwayat(riwayat);
+    hasilSementara = [];
+    document.getElementById("hasil").textContent =
+      "Hasil disimpan ke riwayat browser.";
+    document.getElementById("simpan").disabled = true;
+    tampilkanRiwayat();
+    showPage("riwayat");
+  }
+
+  function aman(v) {
+    return String(v ?? "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;",
+      '"': "&quot;", "'": "&#39;"
+    })[c]);
+  }
+
+  function tampilkanRiwayat() {
+    const data = bacaRiwayat();
+    document.getElementById("kosong").style.display =
+      data.length ? "none" : "block";
+
+    document.getElementById("tabelRiwayat").innerHTML =
+      data.slice().reverse().map(r => `
+        <tr>
+          <td>${aman(r.nama)}</td>
+          <td>${aman(r.tanggal)}</td>
+          <td>${aman(r.bank)}</td>
+          <td>${aman(r.nominal)}</td>
+          <td>${aman(r.ref)}</td>
+          <td>${aman(r.waktu)}</td>
+          <td>${aman(r.status)}</td>
+        </tr>
+      `).join("");
+  }
+
+  function perbaruiDashboard() {
+    const data = bacaRiwayat();
+
+    document.getElementById("total").textContent = data.length;
+    document.getElementById("duplikat").textContent =
+      data.filter(r => r.status === "Terindikasi duplikat").length;
+    document.getElementById("periksa").textContent =
+      data.filter(r => r.status === "Perlu diperiksa").length;
+
+    tampilkanRiwayat();
+  }
+
+  function eksporCSV() {
+    const data = bacaRiwayat();
+
+    if (!data.length) {
+      alert("Belum ada riwayat untuk diekspor.");
+      return;
+    }
+
+    const kolomCSV = [
+      "nama", "tanggal", "bank", "nominal", "ref", "waktu", "status"
+    ];
+
+    const isi = [
+      kolomCSV.join(","),
+      ...data.map(r => kolomCSV.map(k =>
+        '"' + String(r[k] || "").replace(/"/g, '""') + '"'
+      ).join(","))
+    ].join("\r\n");
+
+    const blob = new Blob(["\ufeff" + isi], {
+      type: "text/csv;charset=utf-8;"
+    });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "riwayat-pemeriksaan.csv";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  perbaruiDashboard();
+</script>
+</body>
+</html>
